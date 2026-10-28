@@ -1,0 +1,50 @@
+# Binaries and build outputs
+/epubaudio
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage reports
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Audio and temporary converter artifacts
+*.mp3
+*.m4b
+*.aac
+*.wav
+temp_audio/
+*_audio/
+ffmpeg_concat*.txt
+ffmpeg_metadata*.txt
+inputs.txt
+
+# Sample files and test inputs
+sample/*
+!sample/.gitkeep
+
+# Output audiobooks
+output/*
+!output/.gitkeep
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor and IDE configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
