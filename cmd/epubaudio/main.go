@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,6 +132,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 4. Resolve voice
+	voice, isDefaultVoice := resolveVoice(ttsEngine, *flagVoice, *flagSynth, book.Language)
+
 	fmt.Printf("📚 Title:       %s\n", defaultStr(book.Title, "Unknown Title"))
 	if book.Author != "" {
 		fmt.Printf("✍️  Author:      %s\n", book.Author)
@@ -139,15 +143,24 @@ func main() {
 		fmt.Printf("🌐 Language:    %s\n", book.Language)
 	}
 	fmt.Printf("🔊 Synthesizer: %s\n", ttsEngine.Name())
+	if isDefaultVoice {
+		if book.Language != "" {
+			fmt.Printf("🎙️  Voice:       %s (default for '%s')\n", voice, book.Language)
+		} else {
+			fmt.Printf("🎙️  Voice:       %s (default)\n", voice)
+		}
+	} else {
+		fmt.Printf("🎙️  Voice:       %s\n", voice)
+	}
 	fmt.Printf("📑 Chapters:    %d detected (total ~%d characters)\n\n", len(book.Chapters), book.TotalCharacters())
 
-	// 4. Just list chapters if requested
+	// 5. Just list chapters if requested
 	if *flagList {
 		printChapters(book.Chapters)
 		return
 	}
 
-	// 5. Select chapters
+	// 6. Select chapters
 	var selectedIndices []int
 	if *flagChapters != "" {
 		indices, err := parseChapterSelection(*flagChapters, len(book.Chapters))
@@ -177,12 +190,6 @@ func main() {
 	if len(selectedIndices) == 0 {
 		fmt.Println("No chapters selected. Exiting.")
 		return
-	}
-
-	// 6. Determine voice
-	voice := *flagVoice
-	if voice == "" {
-		voice = pickDefaultVoice(*flagSynth, book.Language)
 	}
 
 	// 7. Setup packager
@@ -228,15 +235,36 @@ func main() {
 		Format:     outputFormat,
 		OutputPath: *flagOutput,
 		OnProgress: func(ev converter.ProgressEvent) {
+			fi, err := os.Stdout.Stat()
+			isTerminal := err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+
 			switch ev.Stage {
 			case "start":
 				fmt.Printf("🚀 %s\n", ev.Message)
 			case "chapter_start":
-				fmt.Printf("🎙️  [%d/%d] Synthesizing: \"%s\"...\n", ev.DoneChapters+1, ev.TotalChapters, ev.ChapterTitle)
+				if ev.TotalChunks > 1 {
+					fmt.Printf("\n🎙️  [%d/%d] Synthesizing: %q (%d chunks)...\n", ev.DoneChapters+1, ev.TotalChapters, ev.ChapterTitle, ev.TotalChunks)
+				} else {
+					fmt.Printf("\n🎙️  [%d/%d] Synthesizing: %q...\n", ev.DoneChapters+1, ev.TotalChapters, ev.ChapterTitle)
+				}
 			case "chunk_done":
-				fmt.Printf("   ↳ Chunk %d/%d completed\n", ev.CurrentChunk, ev.TotalChunks)
+				percent := 0
+				if ev.TotalChunks > 0 {
+					percent = (ev.CurrentChunk * 100) / ev.TotalChunks
+				}
+				if isTerminal {
+					barWidth := 20
+					filled := (percent * barWidth) / 100
+					bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+					fmt.Printf("\r   ↳ Progress: [%s] %3d%% (%d/%d chunks)", bar, percent, ev.CurrentChunk, ev.TotalChunks)
+					if ev.CurrentChunk >= ev.TotalChunks {
+						fmt.Println()
+					}
+				} else {
+					fmt.Printf("   ↳ Chunk %d/%d completed (%d%%)\n", ev.CurrentChunk, ev.TotalChunks, percent)
+				}
 			case "chapter_done":
-				fmt.Printf("   ✅ Chapter finished (%d/%d)\n", ev.DoneChapters, ev.TotalChapters)
+				fmt.Printf("   ✅ Chapter [%d/%d] finished\n", ev.DoneChapters, ev.TotalChapters)
 			case "packaging":
 				fmt.Printf("\n📦 %s\n", ev.Message)
 			case "done":
@@ -327,6 +355,21 @@ func parseChapterSelection(input string, total int) ([]int, error) {
 	}
 	sort.Ints(result)
 	return result, nil
+}
+
+func resolveVoice(engine tts.Synthesizer, requestedVoice, synthName, bookLang string) (string, bool) {
+	if strings.TrimSpace(requestedVoice) != "" {
+		return requestedVoice, false
+	}
+	if p, ok := engine.(*tts.Piper); ok && p.ModelPath != "" {
+		base := filepath.Base(p.ModelPath)
+		return strings.TrimSuffix(base, ".onnx"), true
+	}
+	v := pickDefaultVoice(synthName, bookLang)
+	if v == "" {
+		v = "default"
+	}
+	return v, true
 }
 
 func pickDefaultVoice(synthName, lang string) string {

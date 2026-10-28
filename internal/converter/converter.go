@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"epubaudio/internal/audio"
 	"epubaudio/internal/chunker"
@@ -114,11 +115,6 @@ func (c *Converter) Convert(ctx context.Context, book *model.Book, chapterIndice
 	})
 
 	var chapterAudios []audio.ChapterAudio
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, c.cfg.Workers)
-	errChan := make(chan error, len(selected))
 
 	for i, ch := range selected {
 		select {
@@ -127,73 +123,51 @@ func (c *Converter) Convert(ctx context.Context, book *model.Book, chapterIndice
 		default:
 		}
 
-		wg.Add(1)
-		go func(chap model.Chapter, displayIdx int) {
-			defer wg.Done()
-
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			c.emit(ProgressEvent{
-				Stage:         "chapter_start",
-				ChapterIndex: chap.Index,
-				ChapterTitle: chap.Title,
-				DoneChapters: displayIdx,
-				TotalChapters: len(selected),
-				Message:       fmt.Sprintf("Synthesizing chapter %d/%d: %s", displayIdx+1, len(selected), chap.Title),
-			})
-
-			chAudioPath, err := c.synthesizeChapter(ctx, chap)
-			if err != nil {
-				errChan <- fmt.Errorf("chapter %d (%s) failed: %w", chap.Index, chap.Title, err)
-				return
-			}
-
-			dur, _ := c.cfg.Packager.GetAudioDuration(chAudioPath)
-
-			mu.Lock()
-			chapterAudios = append(chapterAudios, audio.ChapterAudio{
-				Index:     chap.Index,
-				Title:     chap.Title,
-				AudioPath: chAudioPath,
-				Duration:  dur,
-			})
-			mu.Unlock()
-
-			c.emit(ProgressEvent{
-				Stage:         "chapter_done",
-				ChapterIndex: chap.Index,
-				ChapterTitle: chap.Title,
-				DoneChapters: displayIdx + 1,
-				TotalChapters: len(selected),
-				Message:       fmt.Sprintf("Finished chapter %d/%d: %s", displayIdx+1, len(selected), chap.Title),
-			})
-		}(ch, i)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	if err, ok := <-errChan; ok {
-		return "", err
-	}
-
-	// Sort chapterAudios by index
-	sortedAudios := make([]audio.ChapterAudio, 0, len(chapterAudios))
-	for _, ch := range selected {
-		for _, ca := range chapterAudios {
-			if ca.Index == ch.Index {
-				sortedAudios = append(sortedAudios, ca)
-				break
-			}
+		chunks := c.cfg.Chunker.Split(ch.Text)
+		numChunks := len(chunks)
+		if numChunks == 0 {
+			numChunks = 1
 		}
+
+		c.emit(ProgressEvent{
+			Stage:         "chapter_start",
+			ChapterIndex:  ch.Index,
+			ChapterTitle:  ch.Title,
+			DoneChapters:  i,
+			TotalChapters: len(selected),
+			TotalChunks:   numChunks,
+			Message:       fmt.Sprintf("Synthesizing chapter %d/%d: %s", i+1, len(selected), ch.Title),
+		})
+
+		chAudioPath, err := c.synthesizeChapter(ctx, ch, chunks, i+1, len(selected))
+		if err != nil {
+			return "", fmt.Errorf("chapter %d (%s) failed: %w", ch.Index, ch.Title, err)
+		}
+
+		dur, _ := c.cfg.Packager.GetAudioDuration(chAudioPath)
+		chapterAudios = append(chapterAudios, audio.ChapterAudio{
+			Index:     ch.Index,
+			Title:     ch.Title,
+			AudioPath: chAudioPath,
+			Duration:  dur,
+		})
+
+		c.emit(ProgressEvent{
+			Stage:         "chapter_done",
+			ChapterIndex:  ch.Index,
+			ChapterTitle:  ch.Title,
+			DoneChapters:  i + 1,
+			TotalChapters: len(selected),
+			TotalChunks:   numChunks,
+			Message:       fmt.Sprintf("Finished chapter %d/%d: %s", i+1, len(selected), ch.Title),
+		})
 	}
 
 	// Output packaging
 	finalOutput := c.determineOutputPath(book)
 	c.emit(ProgressEvent{
 		Stage:   "packaging",
-		Message: fmt.Sprintf("Packaging %d chapters into format '%s' at: %s", len(sortedAudios), c.cfg.Format, finalOutput),
+		Message: fmt.Sprintf("Packaging %d chapters into format '%s' at: %s", len(chapterAudios), c.cfg.Format, finalOutput),
 	})
 
 	meta := audio.BookMeta{
@@ -205,13 +179,13 @@ func (c *Converter) Convert(ctx context.Context, book *model.Book, chapterIndice
 	var pkgErr error
 	switch c.cfg.Format {
 	case FormatM4B:
-		pkgErr = c.cfg.Packager.PackageM4B(ctx, sortedAudios, meta, finalOutput)
+		pkgErr = c.cfg.Packager.PackageM4B(ctx, chapterAudios, meta, finalOutput)
 	case FormatDirectory:
-		pkgErr = c.cfg.Packager.PackageDirectory(sortedAudios, finalOutput)
+		pkgErr = c.cfg.Packager.PackageDirectory(chapterAudios, finalOutput)
 	case FormatMP3Single:
 		fallthrough
 	default:
-		pkgErr = c.cfg.Packager.PackageMP3Single(ctx, sortedAudios, meta, finalOutput)
+		pkgErr = c.cfg.Packager.PackageMP3Single(ctx, chapterAudios, meta, finalOutput)
 	}
 
 	if pkgErr != nil {
@@ -226,15 +200,23 @@ func (c *Converter) Convert(ctx context.Context, book *model.Book, chapterIndice
 	return finalOutput, nil
 }
 
-func (c *Converter) synthesizeChapter(ctx context.Context, ch model.Chapter) (string, error) {
+func (c *Converter) synthesizeChapter(ctx context.Context, ch model.Chapter, chunks []string, chapNum, totalChaps int) (string, error) {
 	chapterFinalPath := filepath.Join(c.cfg.CacheDir, fmt.Sprintf("chapter_%04d.mp3", ch.Index))
 
 	// Check if already completely synthesized (resumable)
 	if fi, err := os.Stat(chapterFinalPath); err == nil && fi.Size() > 1000 {
+		c.emit(ProgressEvent{
+			Stage:         "chunk_done",
+			ChapterIndex:  ch.Index,
+			ChapterTitle:  ch.Title,
+			CurrentChunk:  len(chunks),
+			TotalChunks:   len(chunks),
+			DoneChapters:  chapNum,
+			TotalChapters: totalChaps,
+		})
 		return chapterFinalPath, nil
 	}
 
-	chunks := c.cfg.Chunker.Split(ch.Text)
 	if len(chunks) == 0 {
 		return "", fmt.Errorf("no text chunks to synthesize in chapter %d", ch.Index)
 	}
@@ -244,33 +226,97 @@ func (c *Converter) synthesizeChapter(ctx context.Context, ch model.Chapter) (st
 		if err != nil {
 			return "", err
 		}
+		c.emit(ProgressEvent{
+			Stage:         "chunk_done",
+			ChapterIndex:  ch.Index,
+			ChapterTitle:  ch.Title,
+			CurrentChunk:  1,
+			TotalChunks:   1,
+			DoneChapters:  chapNum,
+			TotalChapters: totalChaps,
+		})
 		return chapterFinalPath, nil
 	}
 
-	// Multiple chunks: synthesize each and stitch
-	var chunkPaths []string
+	// Multiple chunks: synthesize concurrently using worker pool!
+	chunkPaths := make([]string, len(chunks))
+	type chunkJob struct {
+		index int
+		text  string
+		path  string
+	}
+
+	jobs := make(chan chunkJob, len(chunks))
 	for idx, chunkText := range chunks {
 		chunkFile := filepath.Join(c.cfg.CacheDir, fmt.Sprintf("chapter_%04d_chunk_%03d.mp3", ch.Index, idx))
+		chunkPaths[idx] = chunkFile
+		jobs <- chunkJob{index: idx, text: chunkText, path: chunkFile}
+	}
+	close(jobs)
 
-		// Check if chunk exists and has size
-		if fi, err := os.Stat(chunkFile); err == nil && fi.Size() > 500 {
-			chunkPaths = append(chunkPaths, chunkFile)
-			continue
-		}
+	numWorkers := c.cfg.Workers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	if numWorkers > len(chunks) {
+		numWorkers = len(chunks)
+	}
 
-		err := c.cfg.Synthesizer.Synthesize(ctx, chunkText, chunkFile, c.cfg.TTSOptions)
-		if err != nil {
-			return "", fmt.Errorf("chunk %d of chapter %d failed: %w", idx, ch.Index, err)
-		}
+	var chunkWg sync.WaitGroup
+	chunkErrChan := make(chan error, len(chunks))
+	var completedChunks atomic.Int32
 
-		chunkPaths = append(chunkPaths, chunkFile)
-		c.emit(ProgressEvent{
-			Stage:        "chunk_done",
-			ChapterIndex: ch.Index,
-			ChapterTitle: ch.Title,
-			CurrentChunk: idx + 1,
-			TotalChunks:  len(chunks),
-		})
+	for w := 0; w < numWorkers; w++ {
+		chunkWg.Add(1)
+		go func() {
+			defer chunkWg.Done()
+			for job := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				// Check cache
+				if fi, err := os.Stat(job.path); err == nil && fi.Size() > 500 {
+					done := completedChunks.Add(1)
+					c.emit(ProgressEvent{
+						Stage:         "chunk_done",
+						ChapterIndex:  ch.Index,
+						ChapterTitle:  ch.Title,
+						CurrentChunk:  int(done),
+						TotalChunks:   len(chunks),
+						DoneChapters:  chapNum,
+						TotalChapters: totalChaps,
+					})
+					continue
+				}
+
+				err := c.cfg.Synthesizer.Synthesize(ctx, job.text, job.path, c.cfg.TTSOptions)
+				if err != nil {
+					chunkErrChan <- fmt.Errorf("chunk %d of chapter %d failed: %w", job.index+1, ch.Index, err)
+					return
+				}
+
+				done := completedChunks.Add(1)
+				c.emit(ProgressEvent{
+					Stage:         "chunk_done",
+					ChapterIndex:  ch.Index,
+					ChapterTitle:  ch.Title,
+					CurrentChunk:  int(done),
+					TotalChunks:   len(chunks),
+					DoneChapters:  chapNum,
+					TotalChapters: totalChaps,
+				})
+			}
+		}()
+	}
+
+	chunkWg.Wait()
+	close(chunkErrChan)
+
+	if err, ok := <-chunkErrChan; ok {
+		return "", err
 	}
 
 	// Concat all chunks into chapter audio

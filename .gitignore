@@ -24,9 +24,9 @@ ffmpeg_concat*.txt
 ffmpeg_metadata*.txt
 inputs.txt
 
-# Sample files and test inputs
-sample/*
-!sample/.gitkeep
+# Input EPUB files
+input/*
+!input/.gitkeep
 
 # Output audiobooks
 output/*

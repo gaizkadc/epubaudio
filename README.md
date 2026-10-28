@@ -75,9 +75,9 @@ make install
 ## 💡 Quick Start & Usage
 
 ### 1. Interactive Mode
-Run with just the path to your EPUB:
+Place your EPUB files in `input/` and run:
 ```bash
-./epubaudio my_book.epub
+./epubaudio input/my_book.epub
 ```
 The tool will:
 1. Scan and display book metadata (title, author, detected language).
@@ -174,6 +174,8 @@ epubaudio/
 │   └── epubaudio/
 │       ├── main.go             # CLI interface, interactive prompts & flags
 │       └── main_test.go        # Unit tests for CLI parsing
+├── input/                      # Place your input EPUB files here (.gitignored)
+├── output/                     # Generated audiobooks (.m4b, .mp3) saved here (.gitignored)
 ├── internal/
 │   ├── model/                  # Data structures (Book, Chapter)
 │   │   └── book.go
@@ -187,7 +189,11 @@ epubaudio/
 │   │   └── chunker_test.go
 │   ├── tts/                    # Pluggable TTS backend abstraction
 │   │   ├── engine.go           # Synthesizer and VoiceProvider interfaces
-│   │   └── edge.go             # Microsoft Edge-TTS implementation
+│   │   ├── edge.go             # Microsoft Edge-TTS engine
+│   │   ├── macos.go            # Native macOS 'say' engine
+│   │   ├── piper.go            # Piper offline neural VITS engine
+│   │   ├── kokoro.go           # Kokoro-82M neural engine
+│   │   └── sec_ms_gec.go       # Edge-TTS Sec-MS-GEC v2 token generator
 │   ├── audio/                  # Audio concat, duration calculation & packaging
 │   │   ├── packager.go
 │   │   └── packager_test.go
