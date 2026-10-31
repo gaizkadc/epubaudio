@@ -14,11 +14,11 @@ type Options struct {
 
 // Voice represents an available voice on the TTS engine.
 type Voice struct {
-	ID          string // Full voice identifier
-	Name        string // Friendly name
-	Language    string // Locale code, e.g. "es-ES", "en-US"
-	Gender      string // Gender: "Male", "Female", or empty
-	Description string // Optional description or status
+	ID          string `json:"id"`          // Full voice identifier
+	Name        string `json:"name"`        // Friendly name
+	Language    string `json:"language"`    // Locale code, e.g. "es-ES", "en-US"
+	Gender      string `json:"gender"`      // Gender: "Male", "Female", or empty
+	Description string `json:"description,omitempty"` // Optional description or status
 }
 
 // Synthesizer is the pluggable interface implemented by any TTS backend (Edge-TTS, OpenAI, Kokoro, etc.)

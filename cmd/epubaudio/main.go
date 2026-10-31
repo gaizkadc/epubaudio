@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"epubaudio/internal/converter"
 	"epubaudio/internal/epub"
 	"epubaudio/internal/model"
+	"epubaudio/internal/server"
 	"epubaudio/internal/tts"
 )
 
@@ -57,6 +59,8 @@ var (
 	flagProxy      = flag.String("proxy", "", "HTTP proxy for TTS requests (Edge-TTS)")
 	flagKokoroURL  = flag.String("kokoro-url", "", "Custom Kokoro API endpoint (default: http://localhost:8880/v1/audio/speech)")
 	flagPiperModel = flag.String("piper-model", "", "Custom path to Piper .onnx model file")
+	flagWeb        = flag.Bool("web", false, "Start web interface mode (browser UI)")
+	flagPort       = flag.String("port", "8080", "Port to listen on in web mode")
 )
 
 func init() {
@@ -76,6 +80,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  piper    Piper Neural TTS (Offline, high-speed open-source engine)\n")
 		fmt.Fprintf(os.Stderr, "  kokoro   Kokoro 82M TTS (Offline local ONNX inference or local HTTP server)\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  epubaudio -web                                          # Launch web interface on :8080\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio book.epub                                     # Interactive mode\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -synth macos -chapters 0-2 book.epub          # Use native Mac voices\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -synth piper -chapters all book.epub          # Use Piper offline\n")
@@ -85,6 +90,28 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Web interface mode
+	if *flagWeb {
+		srv := server.New(server.Config{
+			Port:       *flagPort,
+			Proxy:      *flagProxy,
+			KokoroURL:  *flagKokoroURL,
+			PiperModel: *flagPiperModel,
+			Workers:    *flagWorkers,
+			CacheDir:   *flagCacheDir,
+		})
+
+		addr := ":" + *flagPort
+		fmt.Printf("🌐 epubaudio web server running at http://localhost:%s\n", *flagPort)
+		fmt.Printf("   Press Ctrl+C to stop.\n\n")
+
+		if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Server error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// 1. Initialize synthesizer engine
 	ttsEngine, err := selectSynthesizer(*flagSynth, *flagProxy, *flagKokoroURL, *flagPiperModel)

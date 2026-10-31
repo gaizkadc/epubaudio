@@ -2,7 +2,7 @@ GO ?= $(shell which go 2>/dev/null || echo go)
 BINARY_NAME=epubaudio
 CMD_DIR=./cmd/epubaudio
 
-.PHONY: all help build install run test test-race coverage lint fmt tidy clean
+.PHONY: all help build build-web web install run test test-race coverage lint fmt tidy clean
 
 all: build
 
@@ -10,7 +10,18 @@ help: ## Display available targets with descriptions
 	@echo "Available Makefile commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
+build-web: ## Build the React frontend assets with Vite
+	@echo "==> Building web frontend..."
+	@cd web && npm run build
+
+web: build ## Build and launch the web interface
+	./$(BINARY_NAME) -web
+
 build: ## Build the epubaudio binary
+	@if [ ! -d "web/dist" ]; then \
+		echo "==> Building web assets..."; \
+		cd web && npm run build; \
+	fi
 	@echo "==> Building $(BINARY_NAME)..."
 	$(GO) build -o $(BINARY_NAME) $(CMD_DIR)
 	@echo "Done: ./$(BINARY_NAME)"

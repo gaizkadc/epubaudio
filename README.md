@@ -62,7 +62,9 @@ make install
 | Command | Description |
 |---|---|
 | `make help` | Display all available targets |
-| `make build` | Compile the `epubaudio` binary |
+| `make build` | Compile the `epubaudio` binary (auto-bundles web UI) |
+| `make web` | Build and start the web interface |
+| `make build-web` | Rebuild the React frontend assets with Vite |
 | `make test` | Run all unit tests |
 | `make test-race` | Run unit tests with Go's race detector |
 | `make coverage` | Generate and show test coverage report |
@@ -74,7 +76,19 @@ make install
 
 ## 💡 Quick Start & Usage
 
-### 1. Interactive Mode
+### 1. Web Interface Mode 🌐
+Launch the embedded web UI with a single command:
+```bash
+./epubaudio -web
+# or: make web
+```
+Then open `http://localhost:8080` in your browser to:
+- Drag & drop your `.epub` file
+- Select your voice and output format
+- Watch real-time progress bars for chapters and chunks
+- Download the generated `.m4b` or `.mp3` directly
+
+### 2. CLI Interactive Mode
 Place your EPUB files in `input/` and run:
 ```bash
 ./epubaudio input/my_book.epub
@@ -87,10 +101,12 @@ The tool will:
 
 ---
 
-### 2. Command-Line Options
+### 3. Command-Line Options
 
 | Flag | Shorthand | Default | Description |
 |---|---|---|---|
+| `-web` | | `false` | Launch the web interface (browser UI) |
+| `-port` | | `8080` | Port to listen on in web mode |
 | `-synth` | | `edge` | Synthesizer engine: `edge`, `macos`, `piper`, or `kokoro` |
 | `-voice` | | *Auto from language* | TTS voice identifier (e.g. `es-ES-AlvaroNeural`, `Mónica (Spanish (Spain))`) |
 | `-rate` | | `+0%` | Speech rate adjustment (e.g. `+10%`, `+20%`, `-10%`) |

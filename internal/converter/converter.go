@@ -26,14 +26,14 @@ const (
 
 // ProgressEvent represents progress updates during conversion.
 type ProgressEvent struct {
-	Stage        string // "start", "chapter_start", "chunk_done", "chapter_done", "packaging", "done"
-	ChapterIndex int
-	ChapterTitle string
-	CurrentChunk int
-	TotalChunks  int
-	DoneChapters int
-	TotalChapters int
-	Message      string
+	Stage         string `json:"stage"`         // "start", "chapter_start", "chunk_done", "chapter_done", "packaging", "done"
+	ChapterIndex  int    `json:"chapterIndex"`
+	ChapterTitle  string `json:"chapterTitle"`
+	CurrentChunk  int    `json:"currentChunk"`
+	TotalChunks   int    `json:"totalChunks"`
+	DoneChapters  int    `json:"doneChapters"`
+	TotalChapters int    `json:"totalChapters"`
+	Message       string `json:"message"`
 }
 
 // Config holds options for the converter service.
