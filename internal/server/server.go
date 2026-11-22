@@ -184,8 +184,7 @@ func (s *Server) handleVoices(w http.ResponseWriter, r *http.Request) {
 
 	allVoices, err := vp.ListVoices(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to list voices: "+err.Error(), http.StatusInternalServerError)
-		return
+		allVoices = []tts.Voice{}
 	}
 
 	var matched []tts.Voice
@@ -195,33 +194,51 @@ func (s *Server) handleVoices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, v := range allVoices {
-		vLang := strings.ToLower(v.Language)
-		vID := strings.ToLower(v.ID)
-		vName := strings.ToLower(v.Name)
+		vLang := strings.ToLower(strings.ReplaceAll(v.Language, "_", "-"))
+		vID := strings.ToLower(strings.ReplaceAll(v.ID, "_", "-"))
 
-		match := filterLang == ""
+		match := filterLang == "" || filterLang == "all"
 		if !match {
-			// First try exact or prefix match against dialect (e.g. "en-us")
+			// First try exact or prefix match against dialect (e.g. "es-es")
 			match = vLang == filterLang ||
 				strings.HasPrefix(vLang, filterLang+"-") ||
-				strings.HasPrefix(vLang, filterLang+"_") ||
-				strings.HasPrefix(vID, filterLang+"-") ||
-				strings.Contains(vLang, filterLang) ||
-				strings.Contains(vID, filterLang)
+				strings.HasPrefix(vID, filterLang+"-")
 
-			// If no match and base language exists (e.g. "en"), match against base language
+			// If no match and base language exists (e.g. "es"), match against base language prefix
 			if !match && baseLang != "" {
 				match = vLang == baseLang ||
 					strings.HasPrefix(vLang, baseLang+"-") ||
-					strings.HasPrefix(vLang, baseLang+"_") ||
-					strings.HasPrefix(vID, baseLang+"-") ||
-					strings.Contains(vName, "("+baseLang)
+					strings.HasPrefix(vID, baseLang+"-")
 			}
 		}
 
 		if match {
 			matched = append(matched, v)
 		}
+	}
+
+	// Sort voices so that exact language / dialect matches come first
+	if len(matched) > 1 && filterLang != "" && filterLang != "all" {
+		sort.SliceStable(matched, func(i, j int) bool {
+			iLang := strings.ToLower(strings.ReplaceAll(matched[i].Language, "_", "-"))
+			jLang := strings.ToLower(strings.ReplaceAll(matched[j].Language, "_", "-"))
+			if iLang == filterLang && jLang != filterLang {
+				return true
+			}
+			if jLang == filterLang && iLang != filterLang {
+				return false
+			}
+			if baseLang != "" {
+				pref := baseLang + "-" + strings.ToUpper(baseLang)
+				if strings.EqualFold(iLang, pref) && !strings.EqualFold(jLang, pref) {
+					return true
+				}
+				if strings.EqualFold(jLang, pref) && !strings.EqualFold(iLang, pref) {
+					return false
+				}
+			}
+			return matched[i].Name < matched[j].Name
+		})
 	}
 
 	// Fallback: if no voices matched the language filter, return all voices
@@ -236,6 +253,9 @@ func (s *Server) handleVoices(w http.ResponseWriter, r *http.Request) {
 
 type convertRequest struct {
 	Filename string `json:"filename"`
+	Title    string `json:"title,omitempty"`
+	Author   string `json:"author,omitempty"`
+	Language string `json:"language,omitempty"`
 	Synth    string `json:"synth"`
 	Voice    string `json:"voice"`
 	Format   string `json:"format"`
@@ -260,6 +280,16 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to read document: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if req.Title != "" {
+		book.Title = req.Title
+	}
+	if req.Author != "" {
+		book.Author = req.Author
+	}
+	if req.Language != "" {
+		book.Language = req.Language
 	}
 
 	if req.Synth == "" {

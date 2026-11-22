@@ -6,15 +6,20 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+var (
+	cachedEdgeVoices   []Voice
+	cachedEdgeVoicesMu sync.Mutex
 )
 
 // EdgeTTS implements the Synthesizer and VoiceProvider interfaces using Microsoft Edge's online TTS service.
@@ -193,6 +198,15 @@ func (e *EdgeTTS) synthesizeWebSocket(ctx context.Context, text, voice, rate, pi
 
 // ListVoices retrieves available voices from Edge TTS.
 func (e *EdgeTTS) ListVoices(ctx context.Context) ([]Voice, error) {
+	cachedEdgeVoicesMu.Lock()
+	if len(cachedEdgeVoices) > 0 {
+		cp := make([]Voice, len(cachedEdgeVoices))
+		copy(cp, cachedEdgeVoices)
+		cachedEdgeVoicesMu.Unlock()
+		return cp, nil
+	}
+	cachedEdgeVoicesMu.Unlock()
+
 	token := GenerateSecMSGecV2()
 	apiURL := fmt.Sprintf(
 		"https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/voices/list?trustedclienttoken=%s&Sec-MS-GEC=%s&Sec-MS-GEC-Version=%s",
@@ -217,15 +231,14 @@ func (e *EdgeTTS) ListVoices(ctx context.Context) ([]Voice, error) {
 	}
 
 	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch voice list: %w", err)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		// If online query fails, serve built-in high-quality voice catalog fallback
+		return getFallbackEdgeVoices(), nil
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("voice list error (%s): %s", resp.Status, string(body))
-	}
 
 	type edgeVoiceResp struct {
 		Name         string `json:"Name"`
@@ -251,6 +264,11 @@ func (e *EdgeTTS) ListVoices(ctx context.Context) ([]Voice, error) {
 			Description: v.Status,
 		})
 	}
+
+	cachedEdgeVoicesMu.Lock()
+	cachedEdgeVoices = voices
+	cachedEdgeVoicesMu.Unlock()
+
 	return voices, nil
 }
 
@@ -273,4 +291,42 @@ func xmlEscape(s string) string {
 		}
 	}
 	return buf.String()
+}
+
+func getFallbackEdgeVoices() []Voice {
+	return []Voice{
+		// Spanish
+		{ID: "es-ES-AlvaroNeural", Name: "Microsoft Alvaro Online (Natural) - Spanish (Spain)", Language: "es-ES", Gender: "Male"},
+		{ID: "es-ES-ElviraNeural", Name: "Microsoft Elvira Online (Natural) - Spanish (Spain)", Language: "es-ES", Gender: "Female"},
+		{ID: "es-MX-DaliaNeural", Name: "Microsoft Dalia Online (Natural) - Spanish (Mexico)", Language: "es-MX", Gender: "Female"},
+		{ID: "es-MX-JorgeNeural", Name: "Microsoft Jorge Online (Natural) - Spanish (Mexico)", Language: "es-MX", Gender: "Male"},
+		{ID: "es-US-AlonsoNeural", Name: "Microsoft Alonso Online (Natural) - Spanish (United States)", Language: "es-US", Gender: "Male"},
+		{ID: "es-US-PalomaNeural", Name: "Microsoft Paloma Online (Natural) - Spanish (United States)", Language: "es-US", Gender: "Female"},
+		{ID: "es-AR-ElenaNeural", Name: "Microsoft Elena Online (Natural) - Spanish (Argentina)", Language: "es-AR", Gender: "Female"},
+		{ID: "es-CO-SalomeNeural", Name: "Microsoft Salome Online (Natural) - Spanish (Colombia)", Language: "es-CO", Gender: "Female"},
+		// English
+		{ID: "en-US-JennyNeural", Name: "Microsoft Jenny Online (Natural) - English (United States)", Language: "en-US", Gender: "Female"},
+		{ID: "en-US-GuyNeural", Name: "Microsoft Guy Online (Natural) - English (United States)", Language: "en-US", Gender: "Male"},
+		{ID: "en-US-AriaNeural", Name: "Microsoft Aria Online (Natural) - English (United States)", Language: "en-US", Gender: "Female"},
+		{ID: "en-GB-SoniaNeural", Name: "Microsoft Sonia Online (Natural) - English (United Kingdom)", Language: "en-GB", Gender: "Female"},
+		{ID: "en-GB-RyanNeural", Name: "Microsoft Ryan Online (Natural) - English (United Kingdom)", Language: "en-GB", Gender: "Male"},
+		// French
+		{ID: "fr-FR-DeniseNeural", Name: "Microsoft Denise Online (Natural) - French (France)", Language: "fr-FR", Gender: "Female"},
+		{ID: "fr-FR-HenriNeural", Name: "Microsoft Henri Online (Natural) - French (France)", Language: "fr-FR", Gender: "Male"},
+		// German
+		{ID: "de-DE-KatjaNeural", Name: "Microsoft Katja Online (Natural) - German (Germany)", Language: "de-DE", Gender: "Female"},
+		{ID: "de-DE-ConradNeural", Name: "Microsoft Conrad Online (Natural) - German (Germany)", Language: "de-DE", Gender: "Male"},
+		// Italian
+		{ID: "it-IT-ElsaNeural", Name: "Microsoft Elsa Online (Natural) - Italian (Italy)", Language: "it-IT", Gender: "Female"},
+		{ID: "it-IT-IsabellaNeural", Name: "Microsoft Isabella Online (Natural) - Italian (Italy)", Language: "it-IT", Gender: "Female"},
+		// Portuguese
+		{ID: "pt-BR-FranciscaNeural", Name: "Microsoft Francisca Online (Natural) - Portuguese (Brazil)", Language: "pt-BR", Gender: "Female"},
+		{ID: "pt-BR-AntonioNeural", Name: "Microsoft Antonio Online (Natural) - Portuguese (Brazil)", Language: "pt-BR", Gender: "Male"},
+		{ID: "pt-PT-RaquelNeural", Name: "Microsoft Raquel Online (Natural) - Portuguese (Portugal)", Language: "pt-PT", Gender: "Female"},
+		// Regional Spanish
+		{ID: "ca-ES-JoanaNeural", Name: "Microsoft Joana Online (Natural) - Catalan (Spain)", Language: "ca-ES", Gender: "Female"},
+		{ID: "ca-ES-EnricNeural", Name: "Microsoft Enric Online (Natural) - Catalan (Spain)", Language: "ca-ES", Gender: "Male"},
+		{ID: "gl-ES-SabelaNeural", Name: "Microsoft Sabela Online (Natural) - Galician (Spain)", Language: "gl-ES", Gender: "Female"},
+		{ID: "eu-ES-AinhoaNeural", Name: "Microsoft Ainhoa Online (Natural) - Basque (Spain)", Language: "eu-ES", Gender: "Female"},
+	}
 }

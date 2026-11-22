@@ -132,8 +132,12 @@ func TestVoicesEndpoint(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Mónica") {
-		t.Errorf("expected voices to contain Mónica for macOS Spanish, got: %s", string(body))
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Mónica") {
+		t.Errorf("expected voices to contain Mónica for macOS Spanish, got: %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, "Bubbles") || strings.Contains(bodyStr, "Jester") {
+		t.Errorf("expected false-positive English voices Bubbles/Jester to be filtered out, got: %s", bodyStr)
 	}
 }
 

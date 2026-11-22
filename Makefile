@@ -2,6 +2,8 @@ GO ?= $(shell which go 2>/dev/null || echo go)
 BINARY_NAME=epubaudio
 CMD_DIR=./cmd/epubaudio
 
+unexport GOROOT
+
 .PHONY: all help build build-web web install run test test-api test-race coverage lint fmt tidy clean
 
 all: build

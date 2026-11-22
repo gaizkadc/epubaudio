@@ -109,7 +109,8 @@ func (p *Piper) ListVoices(ctx context.Context) ([]Voice, error) {
 	voiceDir := filepath.Join(home, ".local", "share", "piper", "voices")
 	entries, err := os.ReadDir(voiceDir)
 	if err != nil {
-		return nil, fmt.Errorf("no piper voices found in %s: %w", voiceDir, err)
+		// Return empty list instead of failing if user hasn't downloaded local piper models yet
+		return []Voice{}, nil
 	}
 
 	var voices []Voice
