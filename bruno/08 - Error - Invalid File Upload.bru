@@ -1,0 +1,26 @@
+meta {
+  name: Error - Invalid File Upload
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/api/upload
+  body: multipart-form
+  auth: none
+}
+
+body:multipart-form {
+  file: @file(../Makefile)
+}
+
+assert {
+  res.status: eq 400
+}
+
+tests {
+  test("rejects non-epub files with status 400", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+}
+

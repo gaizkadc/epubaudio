@@ -1,0 +1,32 @@
+meta {
+  name: Download Generated Audio
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/download?file=Spoonbenders [edge-tts].m4b
+  body: none
+  auth: none
+}
+
+params:query {
+  file: Spoonbenders [edge-tts].m4b
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-disposition']: contains attachment
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("serves file with attachment disposition", function() {
+    const disp = res.getHeader('content-disposition');
+    expect(disp).to.include('attachment');
+  });
+}
+

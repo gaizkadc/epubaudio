@@ -1,0 +1,40 @@
+meta {
+  name: Upload EPUB File
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/upload
+  body: multipart-form
+  auth: none
+}
+
+body:multipart-form {
+  file: @file(../input/Mi planta de naranja lima (traduccion Carl - Jose Mauro de Vasconcelos.epub)
+}
+
+assert {
+  res.status: eq 200
+  res.body.filename: isDefined
+  res.body.title: isDefined
+  res.body.totalChapters: gt 0
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returns parsed metadata", function() {
+    const data = res.getBody();
+    expect(data.filename).to.be.a('string');
+    expect(data.title).to.include('Mi planta de naranja lima');
+    expect(data.totalChapters).to.equal(18);
+    expect(data.totalCharacters).to.be.greaterThan(1000);
+
+    // Save for subsequent conversion request
+    bru.setVar("bookFilename", data.filename);
+  });
+}
+

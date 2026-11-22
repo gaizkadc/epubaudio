@@ -1,0 +1,32 @@
+meta {
+  name: Error - Convert Missing Book
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/api/convert
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "filename": "does_not_exist.epub",
+    "synth": "edge",
+    "voice": "es-ES-AlvaroNeural",
+    "format": "mp3",
+    "chapters": "all"
+  }
+}
+
+assert {
+  res.status: eq 404
+}
+
+tests {
+  test("returns 404 when converting unuploaded book", function() {
+    expect(res.getStatus()).to.equal(404);
+  });
+}
+

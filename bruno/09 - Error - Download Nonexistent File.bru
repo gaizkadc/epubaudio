@@ -1,0 +1,26 @@
+meta {
+  name: Error - Download Nonexistent File
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/api/download?file=missing_book_xyz.m4b
+  body: none
+  auth: none
+}
+
+params:query {
+  file: missing_book_xyz.m4b
+}
+
+assert {
+  res.status: eq 404
+}
+
+tests {
+  test("returns 404 for missing download file", function() {
+    expect(res.getStatus()).to.equal(404);
+  });
+}
+

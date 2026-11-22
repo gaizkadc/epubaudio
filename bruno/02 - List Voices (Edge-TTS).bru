@@ -1,0 +1,43 @@
+meta {
+  name: List Voices (Edge-TTS)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/voices?synth=edge&lang=es
+  body: none
+  auth: none
+}
+
+params:query {
+  synth: edge
+  lang: es
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returns array of Edge-TTS voices with correct structure", function() {
+    const list = res.getBody();
+    expect(Array.isArray(list)).to.be.true;
+    expect(list.length).to.be.greaterThan(0);
+
+    const first = list[0];
+    expect(first).to.have.property('id');
+    expect(first).to.have.property('name');
+    expect(first).to.have.property('language');
+    expect(first).to.have.property('gender');
+
+    // Save sample voice ID for conversion request
+    bru.setVar("sampleVoiceId", first.id);
+  });
+}
+

@@ -1,0 +1,27 @@
+meta {
+  name: Web UI SPA (Root)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains text/html
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("serves HTML with root element", function() {
+    expect(res.getBody()).to.include('id="root"');
+  });
+}
+

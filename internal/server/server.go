@@ -21,7 +21,7 @@ import (
 	"epubaudio/internal/audio"
 	"epubaudio/internal/chunker"
 	"epubaudio/internal/converter"
-	"epubaudio/internal/epub"
+	"epubaudio/internal/reader"
 	"epubaudio/internal/tts"
 	"epubaudio/web"
 )
@@ -125,8 +125,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".epub") {
-		http.Error(w, "File must be an .epub file", http.StatusBadRequest)
+	if !reader.IsSupported(header.Filename) {
+		http.Error(w, "Unsupported file format. Supported formats: .epub, .txt, .pdf", http.StatusBadRequest)
 		return
 	}
 
@@ -143,9 +143,9 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	book, err := epub.Open(savePath)
+	book, err := reader.Open(savePath)
 	if err != nil {
-		http.Error(w, "Failed to parse EPUB: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to parse document: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -256,9 +256,9 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	book, err := epub.Open(filePath)
+	book, err := reader.Open(filePath)
 	if err != nil {
-		http.Error(w, "Failed to read EPUB: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Failed to read document: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 

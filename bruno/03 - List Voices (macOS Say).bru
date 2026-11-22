@@ -1,0 +1,34 @@
+meta {
+  name: List Voices (macOS Say)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/voices?synth=macos&lang=en
+  body: none
+  auth: none
+}
+
+params:query {
+  synth: macos
+  lang: en
+}
+
+assert {
+  res.status: eq 200
+  res.body: isDefined
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returns array of macOS voices", function() {
+    const list = res.getBody();
+    expect(Array.isArray(list)).to.be.true;
+    expect(list.length).to.be.greaterThan(0);
+  });
+}
+

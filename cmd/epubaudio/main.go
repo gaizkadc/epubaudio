@@ -17,8 +17,8 @@ import (
 	"epubaudio/internal/audio"
 	"epubaudio/internal/chunker"
 	"epubaudio/internal/converter"
-	"epubaudio/internal/epub"
 	"epubaudio/internal/model"
+	"epubaudio/internal/reader"
 	"epubaudio/internal/server"
 	"epubaudio/internal/tts"
 )
@@ -70,8 +70,8 @@ func init() {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: epubaudio [options] <book.epub>\n\n")
-		fmt.Fprintf(os.Stderr, "A modular tool to convert EPUB ebooks into audiobooks (M4B, MP3, or chapter directory).\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: epubaudio [options] <book.epub | file.txt | doc.pdf>\n\n")
+		fmt.Fprintf(os.Stderr, "A modular tool to convert EPUB, TXT, and PDF documents into audiobooks (M4B, MP3, or chapter directory).\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nSupported Synthesizers (-synth):\n")
@@ -81,7 +81,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  kokoro   Kokoro 82M TTS (Offline local ONNX inference or local HTTP server)\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -web                                          # Launch web interface on :8080\n")
-		fmt.Fprintf(os.Stderr, "  epubaudio book.epub                                     # Interactive mode\n")
+		fmt.Fprintf(os.Stderr, "  epubaudio book.epub                                     # Interactive mode (EPUB)\n")
+		fmt.Fprintf(os.Stderr, "  epubaudio book.pdf                                      # Interactive mode (PDF)\n")
+		fmt.Fprintf(os.Stderr, "  epubaudio notes.txt                                     # Interactive mode (TXT)\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -synth macos -chapters 0-2 book.epub          # Use native Mac voices\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -synth piper -chapters all book.epub          # Use Piper offline\n")
 		fmt.Fprintf(os.Stderr, "  epubaudio -synth edge -voice es-ES-ElviraNeural book.epub\n")
@@ -127,10 +129,10 @@ func main() {
 		// If no filter was given, check positional arguments
 		if filterLang == "" && len(flag.Args()) > 0 {
 			target := flag.Args()[0]
-			if strings.HasSuffix(strings.ToLower(target), ".epub") {
-				// User passed an EPUB file: detect its language!
-				if b, err := epub.Open(target); err == nil && b.Language != "" {
-					fmt.Printf("📖 Book: \"%s\" (Detected language: %s)\n", defaultStr(b.Title, target), b.Language)
+			if reader.IsSupported(target) {
+				// User passed a document: detect its language!
+				if b, err := reader.Open(target); err == nil && b.Language != "" {
+					fmt.Printf("📖 Document: %q (Detected language: %s)\n", defaultStr(b.Title, target), b.Language)
 					filterLang = b.Language
 				}
 			} else {
@@ -149,13 +151,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	epubPath := args[0]
+	docPath := args[0]
 
-	// 3. Open and parse EPUB
-	fmt.Printf("📖 Reading EPUB: %s\n", epubPath)
-	book, err := epub.Open(epubPath)
+	// 3. Open and parse document
+	fmt.Printf("📖 Reading document: %s\n", docPath)
+	book, err := reader.Open(docPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Error parsing EPUB: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Error parsing document: %v\n", err)
 		os.Exit(1)
 	}
 

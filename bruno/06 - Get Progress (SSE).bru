@@ -1,0 +1,36 @@
+meta {
+  name: Get Progress (SSE)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/progress?jobId={{jobId}}
+  body: none
+  auth: none
+}
+
+params:query {
+  jobId: {{jobId}}
+}
+
+headers {
+  Accept: text/event-stream
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains text/event-stream
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returns event-stream content type", function() {
+    const contentType = res.getHeader('content-type');
+    expect(contentType).to.include('text/event-stream');
+  });
+}
+

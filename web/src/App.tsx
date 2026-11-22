@@ -152,8 +152,9 @@ export default function App() {
   };
 
   const uploadFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.epub')) {
-      setError('Please upload a valid .epub eBook file.');
+    const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+    if (!['.epub', '.txt', '.pdf'].includes(ext)) {
+      setError('Please upload a valid .epub, .txt, or .pdf document.');
       return;
     }
 
@@ -171,7 +172,7 @@ export default function App() {
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || 'Failed to upload and parse EPUB');
+        throw new Error(text || 'Failed to upload and parse document');
       }
 
       const data: BookMeta = await res.json();
@@ -292,7 +293,7 @@ export default function App() {
     <div className="container">
       <header>
         <h1>epubaudio 🎧📖</h1>
-        <p>Turn your EPUB eBooks into audiobooks with natural neural TTS</p>
+        <p>Turn your EPUB, TXT, and PDF documents into audiobooks with natural neural TTS</p>
       </header>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
@@ -302,7 +303,7 @@ export default function App() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".epub"
+            accept=".epub,.txt,.pdf"
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
@@ -314,9 +315,9 @@ export default function App() {
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
           >
-            <div className="dropzone-icon">📖</div>
+            <div className="dropzone-icon">📚</div>
             <div className="dropzone-text">
-              {uploading ? 'Reading EPUB metadata...' : 'Drag & drop an .epub eBook here'}
+              {uploading ? 'Reading document metadata...' : 'Drag & drop an .epub, .txt, or .pdf document here'}
             </div>
             <div className="dropzone-hint">or click to browse from your computer</div>
           </div>

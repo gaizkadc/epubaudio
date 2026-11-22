@@ -2,7 +2,7 @@ GO ?= $(shell which go 2>/dev/null || echo go)
 BINARY_NAME=epubaudio
 CMD_DIR=./cmd/epubaudio
 
-.PHONY: all help build build-web web install run test test-race coverage lint fmt tidy clean
+.PHONY: all help build build-web web install run test test-api test-race coverage lint fmt tidy clean
 
 all: build
 
@@ -36,6 +36,10 @@ run: build ## Build and run interactive mode with arguments (e.g. make run ARGS=
 test: ## Run unit tests
 	@echo "==> Running tests..."
 	$(GO) test -v ./...
+
+test-api: ## Run Bruno REST API tests (requires server running on :8080)
+	@echo "==> Running Bruno API tests..."
+	@npx --yes @usebruno/cli run bruno --env Local
 
 test-race: ## Run unit tests with race detector
 	@echo "==> Running tests with race detector..."

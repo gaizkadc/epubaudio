@@ -1,0 +1,41 @@
+meta {
+  name: Start Conversion Job
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/convert
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "filename": "{{bookFilename}}",
+    "synth": "edge",
+    "voice": "es-ES-AlvaroNeural",
+    "format": "mp3",
+    "chapters": "0"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.jobId: isDefined
+}
+
+tests {
+  test("status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("returns valid jobId", function() {
+    const data = res.getBody();
+    expect(data.jobId).to.be.a('string');
+    expect(data.jobId.length).to.be.greaterThan(5);
+
+    bru.setVar("jobId", data.jobId);
+  });
+}
+

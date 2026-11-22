@@ -1,0 +1,432 @@
+openapi: 3.1.0
+info:
+  title: epubaudio API
+  version: 0.2.0
+  description: |
+    REST and Server-Sent Events (SSE) API for **epubaudio**, a modular tool that converts 
+    EPUB, TXT, and PDF documents into audiobooks (.m4b with chapters or .mp3) using neural text-to-speech engines.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Upload
+    description: Document file upload and metadata inspection (.epub, .txt, .pdf)
+  - name: Voices
+    description: TTS voice catalogs and enumeration
+  - name: Conversion
+    description: Audiobook synthesis job lifecycle and progress
+  - name: Audio
+    description: Download generated audiobook files
+
+paths:
+  /api/upload:
+    post:
+      tags:
+        - Upload
+      summary: Upload and parse an eBook or document (.epub, .txt, .pdf)
+      description: |
+        Receives an `.epub`, `.txt`, or `.pdf` file via multipart form data, saves it to the `input/` directory,
+        and parses document metadata (title, author, language, chapter count, and character totals).
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The eBook or document file to upload (.epub, .txt, or .pdf).
+      responses:
+        '200':
+          description: Document successfully parsed and stored in input directory.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookMetadata'
+              example:
+                filename: "mountain_adventure.epub"
+                title: "The Mountain Adventure"
+                author: "Alex Wanderer"
+                language: "en"
+                totalChapters: 12
+                totalCharacters: 185000
+        '400':
+          description: Invalid file format (not .epub, .txt, or .pdf) or multipart payload too large.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Unsupported file format. Supported formats: .epub, .txt, .pdf"
+
+  /api/voices:
+    get:
+      tags:
+        - Voices
+      summary: List available TTS voices
+      description: |
+        Returns a list of voices available for the selected synthesizer engine,
+        optionally filtered by language code or locale dialect (e.g. `es`, `en-US`, `fr`).
+      operationId: listVoices
+      parameters:
+        - name: synth
+          in: query
+          required: false
+          description: Synthesizer engine identifier.
+          schema:
+            type: string
+            enum: [edge, macos, piper, kokoro]
+            default: edge
+        - name: lang
+          in: query
+          required: false
+          description: Language code or locale prefix to filter voices (e.g. `es`, `en`, `en-US`).
+          schema:
+            type: string
+            example: es
+      responses:
+        '200':
+          description: Array of matching TTS voices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Voice'
+              example:
+                - id: "es-ES-AlvaroNeural"
+                  name: "Microsoft Alvaro Online (Natural) - Spanish (Spain)"
+                  language: "es-ES"
+                  gender: "Male"
+                  description: "GA"
+                - id: "es-ES-ElviraNeural"
+                  name: "Microsoft Elvira Online (Natural) - Spanish (Spain)"
+                  language: "es-ES"
+                  gender: "Female"
+                  description: "GA"
+        '400':
+          description: Unknown synthesizer engine specified.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "unknown synthesizer: invalid-engine"
+        '500':
+          description: Error communicating with the synthesizer backend.
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/convert:
+    post:
+      tags:
+        - Conversion
+      summary: Start an audiobook conversion job
+      description: |
+        Initiates an asynchronous background conversion task for an uploaded EPUB.
+        Returns a unique `jobId` used to subscribe to real-time progress via Server-Sent Events.
+      operationId: startConversion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertRequest'
+            example:
+              filename: "Mi planta de naranja lima (traduccion Carl - Jose Mauro de Vasconcelos.epub"
+              synth: "edge"
+              voice: "es-ES-AlvaroNeural"
+              format: "m4b"
+              chapters: "0-2"
+      responses:
+        '200':
+          description: Conversion task successfully queued and started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertResponse'
+              example:
+                jobId: "c299e5a1b32d84f0"
+        '400':
+          description: Invalid payload or chapter selection format.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Invalid chapter selection: chapter index out of range"
+        '404':
+          description: Uploaded EPUB file not found in input directory.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Book file not found: missing.epub"
+
+  /api/progress:
+    get:
+      tags:
+        - Conversion
+      summary: Stream live conversion progress (SSE)
+      description: |
+        Subscribes to real-time Server-Sent Events (`text/event-stream`) for an active conversion job.
+        Streams chapter progress, intra-chapter chunk percentages, and the final download URL when complete.
+      operationId: getProgressStream
+      parameters:
+        - name: jobId
+          in: query
+          required: true
+          description: Unique job identifier returned by `POST /api/convert`.
+          schema:
+            type: string
+            example: "c299e5a1b32d84f0"
+      responses:
+        '200':
+          description: |
+            Live event stream. Messages are sent as `data: {JSON}\n\n`.
+            Stream terminates when `stage` reaches `done` or `error`.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ProgressEvent'
+              examples:
+                chapter_progress:
+                  summary: Chapter progress event
+                  value:
+                    stage: "chapter_start"
+                    chapterIndex: 0
+                    chapterTitle: "sinopsis"
+                    doneChapters: 0
+                    totalChapters: 3
+                    currentChunk: 1
+                    totalChunks: 1
+                    message: "Synthesizing chapter 1/3: sinopsis"
+                completion_event:
+                  summary: Final completion event
+                  value:
+                    stage: "done"
+                    doneChapters: 3
+                    totalChapters: 3
+                    message: "Finished: Mi planta de naranja lima [edge-tts].m4b"
+                    outputFile: "Mi planta de naranja lima [edge-tts].m4b"
+                    downloadUrl: "/api/download?file=Mi%20planta%20de%20naranja%20lima%20%5Bedge-tts%5D.m4b"
+        '404':
+          description: Job ID not found.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Job not found"
+
+  /api/download:
+    get:
+      tags:
+        - Audio
+      summary: Download a generated audiobook file
+      description: |
+        Streams or downloads a completed `.m4b` or `.mp3` audio file from the `output/` directory.
+        Serves the file with `Content-Disposition: attachment`.
+      operationId: downloadAudiobook
+      parameters:
+        - name: file
+          in: query
+          required: true
+          description: Base filename of the generated audio in the `output/` folder.
+          schema:
+            type: string
+            example: "Mi planta de naranja lima [edge-tts].m4b"
+      responses:
+        '200':
+          description: Audio file stream.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="Mi planta de naranja lima [edge-tts].m4b"'
+          content:
+            audio/mp4:
+              schema:
+                type: string
+                format: binary
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid or malformed filename.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Invalid filename"
+        '404':
+          description: Requested audio file was not found in the output directory.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "File not found"
+
+components:
+  schemas:
+    BookMetadata:
+      type: object
+      required:
+        - filename
+        - title
+        - totalChapters
+        - totalCharacters
+      properties:
+        filename:
+          type: string
+          description: File name of the EPUB inside the `input/` folder.
+          example: "Mi planta de naranja lima.epub"
+        title:
+          type: string
+          description: Extracted title from EPUB metadata.
+          example: "Mi planta de naranja lima"
+        author:
+          type: string
+          description: Extracted author from EPUB Dublin Core metadata.
+          example: "José Mauro de Vasconcelos"
+        language:
+          type: string
+          description: Extracted language code (e.g. `es`, `en`, `en-US`).
+          example: "es"
+        totalChapters:
+          type: integer
+          description: Total number of chapters detected in the EPUB spine.
+          example: 18
+        totalCharacters:
+          type: integer
+          description: Approximate character count across all detected chapters.
+          example: 244801
+
+    Voice:
+      type: object
+      required:
+        - id
+        - name
+        - language
+        - gender
+      properties:
+        id:
+          type: string
+          description: Full unique voice identifier used by the TTS engine.
+          example: "es-ES-AlvaroNeural"
+        name:
+          type: string
+          description: Friendly display name of the voice.
+          example: "Microsoft Alvaro Online (Natural) - Spanish (Spain)"
+        language:
+          type: string
+          description: Locale code of the voice.
+          example: "es-ES"
+        gender:
+          type: string
+          description: Voice gender (e.g. `Male`, `Female`).
+          example: "Male"
+        description:
+          type: string
+          description: Optional status or voice quality tag.
+          example: "GA"
+
+    ConvertRequest:
+      type: object
+      required:
+        - filename
+      properties:
+        filename:
+          type: string
+          description: Name of the uploaded EPUB file in the `input/` directory.
+          example: "Mi planta de naranja lima.epub"
+        synth:
+          type: string
+          enum: [edge, macos, piper, kokoro]
+          default: edge
+          description: Synthesizer backend to use for audio generation.
+        voice:
+          type: string
+          description: Voice identifier (optional; auto-selected based on book language if omitted).
+          example: "es-ES-AlvaroNeural"
+        format:
+          type: string
+          enum: [m4b, mp3]
+          default: m4b
+          description: Output audiobook format (`m4b` includes chapter markers; requires FFmpeg).
+        chapters:
+          type: string
+          default: "all"
+          description: Chapters to convert (`all`, `0,1,2`, or ranges like `0-4`).
+          example: "0-2"
+
+    ConvertResponse:
+      type: object
+      required:
+        - jobId
+      properties:
+        jobId:
+          type: string
+          description: Unique job ID to use when streaming SSE progress from `/api/progress`.
+          example: "c299e5a1b32d84f0"
+
+    ProgressEvent:
+      type: object
+      required:
+        - stage
+      properties:
+        stage:
+          type: string
+          enum: [start, chapter_start, chunk_done, chapter_done, packaging, done, error]
+          description: Current lifecycle stage of the conversion job.
+          example: "chapter_start"
+        chapterIndex:
+          type: integer
+          description: Zero-based index of the currently active chapter.
+          example: 0
+        chapterTitle:
+          type: string
+          description: Title of the currently active chapter.
+          example: "sinopsis"
+        currentChunk:
+          type: integer
+          description: Current chunk number being synthesized within the active chapter.
+          example: 1
+        totalChunks:
+          type: integer
+          description: Total number of chunks in the active chapter.
+          example: 3
+        doneChapters:
+          type: integer
+          description: Number of chapters completed so far.
+          example: 1
+        totalChapters:
+          type: integer
+          description: Total number of selected chapters to convert.
+          example: 3
+        message:
+          type: string
+          description: Human-readable log or status update message.
+          example: "Synthesizing chapter 1/3: sinopsis"
+        outputFile:
+          type: string
+          description: File name of the generated audiobook (present when `stage` is `done`).
+          example: "The Mountain Adventure [edge-tts].m4b"
+        downloadUrl:
+          type: string
+          description: Relative download URL for the finished file (present when `stage` is `done`).
+          example: "/api/download?file=The%20Mountain%20Adventure%20%5Bedge-tts%5D.m4b"
+        error:
+          type: string
+          description: Error description (present when `stage` is `error`).
+          example: "synthesis failed: connection timed out"
+

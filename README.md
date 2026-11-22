@@ -1,6 +1,6 @@
 # epubaudio 🎧📖
 
-A fast, modular command-line tool written in Go that converts EPUB eBooks into audiobooks (`.m4b` with chapter markers, single `.mp3`, or a directory of chapter files).
+A fast, modular command-line tool written in Go that converts EPUB eBooks, plain text files, and PDF documents into audiobooks (`.m4b` with chapter markers, single `.mp3`, or a directory of chapter files).
 
 Powered by free, high-quality neural synthesizers (Edge-TTS, Kokoro, Piper, and macOS `say`) with a pluggable architecture.
 
@@ -11,9 +11,11 @@ Powered by free, high-quality neural synthesizers (Edge-TTS, Kokoro, Piper, and 
 
 ## ✨ Features
 
-- **Standard-Compliant EPUB Parsing**: Respects the reading order defined in the EPUB `<spine>` (`container.xml` $\rightarrow$ `.opf`), avoiding out-of-order chapters, indices, or footnotes.
-- **Table of Contents (TOC) Extraction**: Reads chapter titles from `toc.ncx` / `nav.xhtml` or document headings (`<h1>`, `<h2>`).
-- **Clean Text Normalization**: Automatically strips scripts, styles, and markup while unescaping HTML entities and preserving natural sentence and paragraph pauses.
+- **Multi-Format Document Support**:
+  - **EPUB**: Respects spine reading order (`container.xml` $\rightarrow$ `.opf`), extracts TOC from `toc.ncx` / `nav.xhtml`, unescapes HTML entities, and strips layout markup.
+  - **PDF**: Pure Go extraction with zero CGO dependencies; cleans running headers/footers, strips standalone page numbers, un-hyphenates words split across line breaks, expands typographic ligatures (`fi`, `fl`, `ff`), and auto-detects chapters.
+  - **TXT**: Plain text parsing with UTF-8 BOM stripping, header/metadata extraction (`# Title`, `By: Author`), chapter heading detection (`Chapter 1`, `Capítulo IV`), and fallback paragraph chunking (~2500 words/chapter).
+- **Automatic Language Detection**: Analyzes high-frequency stopword distributions to auto-detect language (Spanish, English, French, German, Italian, Portuguese) for TXT and PDF documents when metadata is absent.
 - **Smart Text Chunking**: Automatically splits long chapters into manageable chunks along sentence and paragraph boundaries, avoiding synthesis timeouts or character limit errors.
 - **Resumable Cache**: Saves audio chunks into a cache directory. If synthesis is interrupted or cancelled, restarting resumes where it left off without re-synthesizing completed parts.
 - **Multiple Output Formats**:
@@ -83,18 +85,25 @@ Launch the embedded web UI with a single command:
 # or: make web
 ```
 Then open `http://localhost:8080` in your browser to:
-- Drag & drop your `.epub` file
+- Drag & drop your `.epub`, `.txt`, or `.pdf` file
 - Select your voice and output format
 - Watch real-time progress bars for chapters and chunks
 - Download the generated `.m4b` or `.mp3` directly
 
 ### 2. CLI Interactive Mode
-Place your EPUB files in `input/` and run:
+Place your documents in `input/` and run:
 ```bash
+# Convert an EPUB eBook
 ./epubaudio input/my_book.epub
+
+# Convert a PDF document
+./epubaudio input/manual.pdf
+
+# Convert a plain text document
+./epubaudio input/notes.txt
 ```
 The tool will:
-1. Scan and display book metadata (title, author, detected language).
+1. Scan and display document metadata (title, author, detected language).
 2. List all detected chapters with character counts.
 3. Prompt you to choose which chapters to convert (e.g. `all`, `0,1,2`, or `1-5`).
 4. Synthesize the audio and package the final audiobook.
