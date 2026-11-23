@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,6 +56,11 @@ type WebProgressEvent struct {
 	Error       string `json:"error,omitempty"`
 }
 
+func init() {
+	_ = mime.AddExtensionType(".m4b", "audio/mp4")
+	_ = mime.AddExtensionType(".m4a", "audio/mp4")
+}
+
 func New(cfg Config) *Server {
 	if cfg.Port == "" {
 		cfg.Port = "8080"
@@ -88,7 +94,10 @@ func (s *Server) Handler() http.Handler {
 		fileServer := http.FileServer(http.FS(distFS))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			path := strings.TrimPrefix(r.URL.Path, "/")
-			if path == "" {
+			if path == "" || path == "index.html" {
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Pragma", "no-cache")
+				w.Header().Set("Expires", "0")
 				fileServer.ServeHTTP(w, r)
 				return
 			}
@@ -97,11 +106,18 @@ func (s *Server) Handler() http.Handler {
 			f, err := distFS.Open(path)
 			if err == nil {
 				_ = f.Close()
+				// Hashed assets in assets/ can be cached, but others should revalidate
+				if !strings.HasPrefix(path, "assets/") {
+					w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+				}
 				fileServer.ServeHTTP(w, r)
 				return
 			}
 
-			// SPA Fallback: serve index.html
+			// SPA Fallback: serve index.html with no-cache
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 			r.URL.Path = "/"
 			fileServer.ServeHTTP(w, r)
 		})
@@ -438,7 +454,20 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".m4b", ".m4a":
+		w.Header().Set("Content-Type", "audio/mp4")
+	case ".mp3":
+		w.Header().Set("Content-Type", "audio/mpeg")
+	}
+
+	if r.URL.Query().Get("download") == "true" || r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	} else {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	}
+
 	http.ServeFile(w, r, fullPath)
 }
 

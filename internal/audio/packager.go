@@ -179,6 +179,7 @@ func (p *Packager) PackageM4B(ctx context.Context, chapters []ChapterAudio, meta
 		"-map_metadata", "1",
 		"-c:a", "aac",
 		"-b:a", "128k",
+		"-movflags", "+faststart",
 		outPath,
 	}
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -138,6 +139,42 @@ func TestVoicesEndpoint(t *testing.T) {
 	}
 	if strings.Contains(bodyStr, "Bubbles") || strings.Contains(bodyStr, "Jester") {
 		t.Errorf("expected false-positive English voices Bubbles/Jester to be filtered out, got: %s", bodyStr)
+	}
+}
+
+func TestDownloadHeaders(t *testing.T) {
+	_ = os.MkdirAll("output", 0755)
+	dummyFile := filepath.Join("output", "test_audio.m4b")
+	_ = os.WriteFile(dummyFile, []byte("dummy m4b content"), 0644)
+	t.Cleanup(func() { _ = os.Remove(dummyFile) })
+
+	srv := New(Config{})
+	handler := srv.Handler()
+
+	// 1. Streaming request (audio player)
+	req := httptest.NewRequest("GET", "/api/download?file=test_audio.m4b", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(resp.Header.Get("Content-Disposition"), "inline") {
+		t.Errorf("expected inline Content-Disposition for player, got %s", resp.Header.Get("Content-Disposition"))
+	}
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "audio/mp4") {
+		t.Errorf("expected audio/mp4 Content-Type, got %s", resp.Header.Get("Content-Type"))
+	}
+
+	// 2. Download request
+	reqDl := httptest.NewRequest("GET", "/api/download?file=test_audio.m4b&download=true", nil)
+	wDl := httptest.NewRecorder()
+	handler.ServeHTTP(wDl, reqDl)
+
+	respDl := wDl.Result()
+	if !strings.Contains(respDl.Header.Get("Content-Disposition"), "attachment") {
+		t.Errorf("expected attachment Content-Disposition, got %s", respDl.Header.Get("Content-Disposition"))
 	}
 }
 

@@ -5,6 +5,35 @@ interface DropzoneProps {
   onFileSelected: (file: File) => void;
 }
 
+const FilesSVG = () => (
+  <svg width="90" height="72" viewBox="0 0 90 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Blue file */}
+    <rect x="0" y="14" width="34" height="44" rx="5" fill="#8ecae6" />
+    <rect x="0" y="14" width="34" height="44" rx="5" stroke="#219ebc" strokeWidth="2"/>
+    <path d="M8 14V8a2 2 0 0 1 2-2h14l10 10v38a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V14z" fill="#8ecae6"/>
+    <path d="M22 6l10 10H22V6z" fill="#219ebc" opacity="0.6"/>
+    <line x1="8" y1="26" x2="26" y2="26" stroke="#219ebc" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="8" y1="32" x2="26" y2="32" stroke="#219ebc" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="8" y1="38" x2="20" y2="38" stroke="#219ebc" strokeWidth="2" strokeLinecap="round"/>
+    {/* Yellow file (middle) */}
+    <rect x="28" y="4" width="34" height="46" rx="5" fill="#ffd166" />
+    <rect x="28" y="4" width="34" height="46" rx="5" stroke="#ffb703" strokeWidth="2"/>
+    <path d="M36 4V0a0 0 0 0 1 0 0h14l10 10v36a2 2 0 0 1-2 2H38a2 2 0 0 1-2-2V4z" fill="#ffd166"/>
+    <path d="M50 0l10 10H50V0z" fill="#ffb703" opacity="0.7"/>
+    <line x1="36" y1="20" x2="54" y2="20" stroke="#ffb703" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="36" y1="27" x2="54" y2="27" stroke="#ffb703" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="36" y1="34" x2="48" y2="34" stroke="#ffb703" strokeWidth="2" strokeLinecap="round"/>
+    {/* Coral file */}
+    <rect x="56" y="14" width="34" height="44" rx="5" fill="#ff9b8a" />
+    <rect x="56" y="14" width="34" height="44" rx="5" stroke="#e8632a" strokeWidth="2"/>
+    <path d="M64 14V8a2 2 0 0 1 2-2h14l10 10v38a2 2 0 0 1-2 2H66a2 2 0 0 1-2-2V14z" fill="#ff9b8a"/>
+    <path d="M78 6l10 10H78V6z" fill="#e8632a" opacity="0.6"/>
+    <line x1="64" y1="26" x2="82" y2="26" stroke="#e8632a" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="64" y1="32" x2="82" y2="32" stroke="#e8632a" strokeWidth="2" strokeLinecap="round"/>
+    <line x1="64" y1="38" x2="76" y2="38" stroke="#e8632a" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
 export const Dropzone: React.FC<DropzoneProps> = ({ uploading, onFileSelected }) => {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,27 +64,41 @@ export const Dropzone: React.FC<DropzoneProps> = ({ uploading, onFileSelected })
   };
 
   return (
-    <div className="card">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".epub,.txt,.pdf"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-      <div
-        className={`dropzone ${dragActive ? 'active' : ''}`}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <div className="dropzone-icon">📚</div>
-        <div className="dropzone-text">
-          {uploading ? 'Reading document metadata...' : 'Drag & drop an .epub, .txt, or .pdf document here'}
+    <div className="dropzone-card">
+      {/* Background blobs */}
+      <div className="blob blob-teal" />
+      <div className="blob blob-coral" />
+      <div className="blob blob-sun" />
+      <div className="blob blob-sky" />
+
+      <div className="dropzone-inner">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".epub,.txt,.pdf"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        <div
+          className={`dropzone ${dragActive ? 'active' : ''}`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <FilesSVG />
+          <div className="dropzone-text">
+            {uploading ? 'Reading document…' : 'Drag your file here (EPUB, PDF, TXT)'}
+          </div>
+          <div className="dropzone-hint">or click to select from computer</div>
         </div>
-        <div className="dropzone-hint">or click to browse from your computer</div>
+
+        <div className="dropzone-stars">
+          <span>⭐</span>
+          <span>✨</span>
+          <span>⭐</span>
+        </div>
       </div>
     </div>
   );

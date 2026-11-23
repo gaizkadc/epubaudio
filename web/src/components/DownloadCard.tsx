@@ -15,31 +15,38 @@ export const DownloadCard: React.FC<DownloadCardProps> = ({
   format,
   onReset,
 }) => {
+  const downloadLink = downloadUrl.includes('?')
+    ? `${downloadUrl}&download=true`
+    : `${downloadUrl}?download=true`;
+
   return (
     <div className="card done-card">
-      <div className="done-icon">🎉</div>
-      <div className="done-title">Audiobook Ready!</div>
+      <div className="done-title">Here's your audiobook!</div>
       <div className="done-filename">{filename}</div>
       <div className="done-meta">
-        Synthesized with {synth.toUpperCase()} • {format.toUpperCase()} format
+        {synth.toUpperCase()} · {format.toUpperCase()}
       </div>
 
       <div className="audio-player-container">
-        <audio controls src={downloadUrl} className="audio-preview">
+        <audio controls preload="metadata" className="audio-preview" key={downloadUrl}>
+          <source
+            src={downloadUrl}
+            type={format === 'mp3' ? 'audio/mpeg' : 'audio/mp4'}
+          />
           Your browser does not support the audio element.
         </audio>
       </div>
 
       <div className="done-actions">
         <a
-          href={downloadUrl}
+          href={downloadLink}
           download={filename}
           className="btn btn-success"
         >
-          ⬇️ Download Audiobook ({format.toUpperCase()})
+          ⬇ Download {format.toUpperCase()}
         </a>
         <button className="btn btn-secondary" onClick={onReset}>
-          Choose another book
+          Convert another book
         </button>
       </div>
     </div>
