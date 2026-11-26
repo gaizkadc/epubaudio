@@ -5,6 +5,8 @@ interface DropzoneProps {
   onFileSelected: (file: File) => void;
 }
 
+type InputMode = 'file' | 'text';
+
 const FilesSVG = () => (
   <svg width="90" height="72" viewBox="0 0 90 72" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* Blue file */}
@@ -34,8 +36,27 @@ const FilesSVG = () => (
   </svg>
 );
 
+function buildFilenameFromText(rawText: string): string {
+  const firstLine = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0) || 'pasted-text';
+
+  const slug = firstLine
+    .slice(0, 40)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u00C0-\u024F\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+
+  const suffix = Date.now().toString(36).slice(-4);
+  return `${slug || 'pasted-text'}-${suffix}.txt`;
+}
+
 export const Dropzone: React.FC<DropzoneProps> = ({ uploading, onFileSelected }) => {
+  const [mode, setMode] = useState<InputMode>('file');
   const [dragActive, setDragActive] = useState(false);
+  const [pastedText, setPastedText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -63,6 +84,14 @@ export const Dropzone: React.FC<DropzoneProps> = ({ uploading, onFileSelected })
     }
   };
 
+  const handleTextSubmit = () => {
+    const trimmed = pastedText.trim();
+    if (!trimmed || uploading) return;
+    const filename = buildFilenameFromText(trimmed);
+    const file = new File([trimmed], filename, { type: 'text/plain' });
+    onFileSelected(file);
+  };
+
   return (
     <div className="dropzone-card">
       {/* Background blobs */}
@@ -72,33 +101,82 @@ export const Dropzone: React.FC<DropzoneProps> = ({ uploading, onFileSelected })
       <div className="blob blob-sky" />
 
       <div className="dropzone-inner">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".epub,.txt,.pdf"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-        <div
-          className={`dropzone ${dragActive ? 'active' : ''}`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <FilesSVG />
-          <div className="dropzone-text">
-            {uploading ? 'Reading document…' : 'Drag your file here (EPUB, PDF, TXT)'}
-          </div>
-          <div className="dropzone-hint">or click to select from computer</div>
+        <div className="input-mode-tabs" role="tablist" aria-label="Input method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'file'}
+            className={`input-mode-tab ${mode === 'file' ? 'active' : ''}`}
+            onClick={() => setMode('file')}
+          >
+            📄 Upload File
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'text'}
+            className={`input-mode-tab ${mode === 'text' ? 'active' : ''}`}
+            onClick={() => setMode('text')}
+          >
+            ✏️ Paste Text
+          </button>
         </div>
 
-        <div className="dropzone-stars">
-          <span>⭐</span>
-          <span>✨</span>
-          <span>⭐</span>
-        </div>
+        {mode === 'file' ? (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".epub,.txt,.pdf"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+            <div
+              className={`dropzone ${dragActive ? 'active' : ''}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FilesSVG />
+              <div className="dropzone-text">
+                {uploading ? 'Reading document…' : 'Drag your file here (EPUB, PDF, TXT)'}
+              </div>
+              <div className="dropzone-hint">or click to select from computer</div>
+            </div>
+
+            <div className="dropzone-stars">
+              <span>⭐</span>
+              <span>✨</span>
+              <span>⭐</span>
+            </div>
+          </>
+        ) : (
+          <div className="paste-text-container">
+            <textarea
+              className="paste-text-area"
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder="Paste or type your text here..."
+              rows={8}
+              disabled={uploading}
+            />
+            <div className="paste-text-footer">
+              <span className="char-count">
+                {pastedText.trim().length.toLocaleString()} chars
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary paste-submit-btn"
+                onClick={handleTextSubmit}
+                disabled={uploading || pastedText.trim().length === 0}
+              >
+                {uploading ? 'Processing…' : 'Continue →'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
